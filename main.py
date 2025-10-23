@@ -88,10 +88,20 @@ def main():
     logger.info("System initialized successfully")
     logger.info(f"Configuration loaded: Audio={config.audio.sample_rate}Hz, UI Port={config.ui.port}")
     
-    # TODO: Initialize and start the system components
-    # This will be implemented in subsequent tasks
-    print("Meeting Transcription and Translation System")
-    print("System initialized. Ready for component implementation.")
+    # Initialize and launch the Gradio interface
+    try:
+        from src.ui import launch_interface
+        logger.info("Launching Gradio interface...")
+        print("Starting web interface...")
+        print(f"Open your browser and go to: http://{config.ui.host}:{config.ui.port}")
+        
+        # Launch the interface
+        launch_interface()
+        
+    except Exception as e:
+        logger.error(f"Failed to launch interface: {e}")
+        print(f"Error launching interface: {e}")
+        return
 
 
 if __name__ == "__main__":
