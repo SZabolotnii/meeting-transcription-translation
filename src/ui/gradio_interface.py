@@ -15,7 +15,8 @@ from ..config import config, SUPPORTED_LANGUAGES, AUDIO_SOURCE_TYPES
 class GradioInterface:
     """Main Gradio interface for the transcription system"""
     
-    def __init__(self):
+    def __init__(self, orchestrator=None):
+        self.orchestrator = orchestrator
         self.session_active = False
         self.current_subtitles = ""
         self.session_history = []
@@ -325,59 +326,103 @@ class GradioInterface:
     
     def _start_session(self, audio_source: str, target_language: str, audio_device: str) -> Tuple:
         """Start transcription session"""
-        self.session_active = True
-        self.status_message = "Сесія активна"
-        self.session_history = []
-        self.current_subtitles = ""
-        self.session_start_time = datetime.now()
-        
-        # Store current session settings
-        self.current_audio_source = audio_source
-        self.current_target_language = target_language
-        self.current_audio_device = audio_device
-        
-        # Reset performance metrics
-        self.performance_metrics = {
-            'transcription_latency': 0.0,
-            'translation_latency': 0.0,
-            'total_processed': 0,
-            'errors_count': 0
-        }
-        self.error_count = 0
-        self.last_error = None
-        
-        # TODO: Initialize orchestrator and start transcription
-        # This will be connected to the orchestrator in later tasks
-        
-        return (
-            gr.Button(interactive=False),  # start_btn
-            gr.Button(interactive=True),   # stop_btn
-            self._format_status_html("Сесія активна", True),  # status
-            gr.Button(interactive=False),  # export_btn
-            gr.Timer(active=True),  # refresh_timer - start auto-refresh
-            self._format_processing_status_html(),  # processing_status
-            self._format_performance_metrics_html(),  # performance_metrics
-            gr.Button(interactive=True)  # clear_history_btn
-        )
+        try:
+            # Start orchestrator session if available
+            if self.orchestrator:
+                success = self.orchestrator.start_session(
+                    audio_source=audio_source,
+                    target_language=target_language,
+                    audio_device=audio_device
+                )
+                
+                if not success:
+                    return (
+                        gr.Button(interactive=True),   # start_btn
+                        gr.Button(interactive=False),  # stop_btn
+                        self._format_status_html("Помилка запуску сесії", False),  # status
+                        gr.Button(interactive=False),  # export_btn
+                        gr.Timer(active=False),  # refresh_timer
+                        self._format_processing_status_html(),  # processing_status
+                        self._format_performance_metrics_html(),  # performance_metrics
+                        gr.Button(interactive=False)  # clear_history_btn
+                    )
+            
+            self.session_active = True
+            self.status_message = "Сесія активна"
+            self.session_history = []
+            self.current_subtitles = ""
+            self.session_start_time = datetime.now()
+            
+            # Store current session settings
+            self.current_audio_source = audio_source
+            self.current_target_language = target_language
+            self.current_audio_device = audio_device
+            
+            # Reset performance metrics
+            self.performance_metrics = {
+                'transcription_latency': 0.0,
+                'translation_latency': 0.0,
+                'total_processed': 0,
+                'errors_count': 0
+            }
+            self.error_count = 0
+            self.last_error = None
+            
+            return (
+                gr.Button(interactive=False),  # start_btn
+                gr.Button(interactive=True),   # stop_btn
+                self._format_status_html("Сесія активна", True),  # status
+                gr.Button(interactive=False),  # export_btn
+                gr.Timer(active=True),  # refresh_timer - start auto-refresh
+                self._format_processing_status_html(),  # processing_status
+                self._format_performance_metrics_html(),  # performance_metrics
+                gr.Button(interactive=True)  # clear_history_btn
+            )
+            
+        except Exception as e:
+            return (
+                gr.Button(interactive=True),   # start_btn
+                gr.Button(interactive=False),  # stop_btn
+                self._format_status_html(f"Помилка: {str(e)}", False),  # status
+                gr.Button(interactive=False),  # export_btn
+                gr.Timer(active=False),  # refresh_timer
+                self._format_processing_status_html(),  # processing_status
+                self._format_performance_metrics_html(),  # performance_metrics
+                gr.Button(interactive=False)  # clear_history_btn
+            )
     
     def _stop_session(self) -> Tuple:
         """Stop transcription session"""
-        self.session_active = False
-        self.status_message = "Сесія зупинена"
-        
-        # TODO: Stop orchestrator
-        # This will be connected to the orchestrator in later tasks
-        
-        return (
-            gr.Button(interactive=True),   # start_btn
-            gr.Button(interactive=False),  # stop_btn
-            self._format_status_html("Сесія зупинена", False),  # status
-            gr.Button(interactive=True) if self.session_history else gr.Button(interactive=False),  # export_btn
-            gr.Timer(active=False),  # refresh_timer - stop auto-refresh
-            self._format_processing_status_html(),  # processing_status
-            self._format_performance_metrics_html(),  # performance_metrics
-            gr.Button(interactive=True) if self.session_history else gr.Button(interactive=False)  # clear_history_btn
-        )
+        try:
+            # Stop orchestrator session if available
+            if self.orchestrator:
+                self.orchestrator.stop_session()
+            
+            self.session_active = False
+            self.status_message = "Сесія зупинена"
+            
+            return (
+                gr.Button(interactive=True),   # start_btn
+                gr.Button(interactive=False),  # stop_btn
+                self._format_status_html("Сесія зупинена", False),  # status
+                gr.Button(interactive=True) if self.session_history else gr.Button(interactive=False),  # export_btn
+                gr.Timer(active=False),  # refresh_timer - stop auto-refresh
+                self._format_processing_status_html(),  # processing_status
+                self._format_performance_metrics_html(),  # performance_metrics
+                gr.Button(interactive=True) if self.session_history else gr.Button(interactive=False)  # clear_history_btn
+            )
+            
+        except Exception as e:
+            return (
+                gr.Button(interactive=True),   # start_btn
+                gr.Button(interactive=False),  # stop_btn
+                self._format_status_html(f"Помилка зупинки: {str(e)}", False),  # status
+                gr.Button(interactive=False),  # export_btn
+                gr.Timer(active=False),  # refresh_timer
+                self._format_processing_status_html(),  # processing_status
+                self._format_performance_metrics_html(),  # performance_metrics
+                gr.Button(interactive=False)  # clear_history_btn
+            )
     
     def _export_history(self, export_format: str, include_timestamps: bool, 
                        include_original: bool, include_translation: bool, 
@@ -754,40 +799,75 @@ class GradioInterface:
                 self._format_performance_metrics_html()
             )
         
-        # TODO: Get real-time data from orchestrator
-        # For now, simulate some activity for demonstration
-        import random
-        import time
+        # Get real-time data from orchestrator if available
+        if self.orchestrator:
+            try:
+                # Update performance metrics from orchestrator
+                orchestrator_metrics = self.orchestrator.get_performance_metrics()
+                self.performance_metrics.update(orchestrator_metrics)
+                
+                # Update processing status from orchestrator
+                orchestrator_status = self.orchestrator.get_processing_status()
+                self.processing_status.update(orchestrator_status)
+                
+                # Update audio level
+                self.audio_level = orchestrator_metrics.get('audio_level', 0.0)
+                
+                # Get session history from orchestrator
+                orchestrator_history = self.orchestrator.get_session_history()
+                
+                # Convert orchestrator history to UI format and check for new entries
+                if len(orchestrator_history) > len(self.session_history):
+                    # New entries detected
+                    for entry in orchestrator_history[len(self.session_history):]:
+                        ui_entry = {
+                            'timestamp': datetime.fromtimestamp(entry['timestamp']).strftime("%H:%M:%S"),
+                            'original_text': entry['original_text'],
+                            'translated_text': entry.get('translated_text')
+                        }
+                        self.session_history.append(ui_entry)
+                    
+                    # Update subtitles display
+                    self._update_subtitles_display()
+                
+            except Exception as e:
+                # Log error but continue with fallback behavior
+                import logging
+                logging.getLogger(__name__).error(f"Error updating from orchestrator: {e}")
         
-        # Simulate audio level changes
-        self.audio_level = random.uniform(0.3, 0.8)
-        
-        # Simulate processing status changes
-        self._simulate_processing_activity()
-        
-        # Simulate new subtitles (this will be replaced with real data)
-        if random.random() < 0.1:  # 10% chance of new subtitle
-            current_time = datetime.now().strftime("%H:%M:%S")
-            new_subtitle = f"Демонстраційний текст субтитрів..."
+        # Fallback: simulate some activity if orchestrator is not available
+        if not self.orchestrator:
+            import random
             
-            # Simulate processing latency
-            transcription_latency = random.uniform(0.5, 2.0)
-            translation_latency = random.uniform(0.2, 1.0)
+            # Simulate audio level changes
+            self.audio_level = random.uniform(0.3, 0.8)
             
-            # Update performance metrics
-            self.performance_metrics['transcription_latency'] = transcription_latency
-            self.performance_metrics['translation_latency'] = translation_latency
-            self.performance_metrics['total_processed'] += 1
+            # Simulate processing status changes
+            self._simulate_processing_activity()
             
-            # Add to history
-            self.session_history.append({
-                'timestamp': current_time,
-                'original_text': new_subtitle,
-                'translated_text': f"Переклад: {new_subtitle}"
-            })
-            
-            # Update current subtitles with auto-scroll effect
-            self._update_subtitles_display()
+            # Simulate new subtitles occasionally
+            if random.random() < 0.1:  # 10% chance of new subtitle
+                current_time = datetime.now().strftime("%H:%M:%S")
+                new_subtitle = f"Демонстраційний текст субтитрів..."
+                
+                # Simulate processing latency
+                transcription_latency = random.uniform(0.5, 2.0)
+                translation_latency = random.uniform(0.2, 1.0)
+                
+                # Update performance metrics
+                self.performance_metrics['transcription_latency'] = transcription_latency
+                self.performance_metrics['translation_latency'] = translation_latency
+                self.performance_metrics['total_processed'] += 1
+                
+                # Add to history
+                self.session_history.append({
+                    'timestamp': current_time,
+                    'original_text': new_subtitle,
+                    'translated_text': f"Переклад: {new_subtitle}"
+                })
+                
+                # Update current subtitles with auto-scroll effect
+                self._update_subtitles_display()
         
         return (
             self.current_subtitles,
@@ -935,13 +1015,13 @@ class GradioInterface:
         return self.interface.launch(**launch_kwargs)
 
 
-def create_interface() -> GradioInterface:
+def create_interface(orchestrator=None) -> GradioInterface:
     """Factory function to create the Gradio interface"""
-    return GradioInterface()
+    return GradioInterface(orchestrator=orchestrator)
 
 
 # For backwards compatibility and direct usage
-def launch_interface(**kwargs):
+def launch_interface(orchestrator=None, **kwargs):
     """Launch the interface directly"""
-    interface = create_interface()
+    interface = create_interface(orchestrator=orchestrator)
     return interface.launch(**kwargs)

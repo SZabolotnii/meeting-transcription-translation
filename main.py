@@ -77,31 +77,79 @@ def main():
         print("3. Run the system: python main.py")
         return
     
-    logger.info("Starting Meeting Transcription and Translation System")
+    logger.info(f"Starting {config.app_name} v{config.app_version}")
     
     # Setup logging
     setup_logging()
     
+    # Validate environment and configuration
+    from src.config import validate_environment, get_config_summary
+    from src.utils.performance_profiler import profiler
+    
+    is_valid, issues = validate_environment()
+    if not is_valid:
+        logger.error("Configuration validation failed:")
+        for issue in issues:
+            logger.error(f"  - {issue}")
+        print("Configuration issues detected. Please check the logs and fix the issues.")
+        return
+    
     # Create necessary directories
     create_directories()
     
+    # Log configuration summary
+    config_summary = get_config_summary()
     logger.info("System initialized successfully")
-    logger.info(f"Configuration loaded: Audio={config.audio.sample_rate}Hz, UI Port={config.ui.port}")
+    logger.info(f"Audio: {config_summary['audio']['sample_rate']}Hz, {config_summary['audio']['channels']} channel(s)")
+    logger.info(f"Whisper: {config_summary['whisper']['model_size']} model on {config_summary['whisper']['device']}")
+    logger.info(f"Translation: {config_summary['translation']['target_language']} ({'enabled' if config_summary['translation']['api_configured'] else 'disabled'})")
+    logger.info(f"UI: {config_summary['ui']['host']}:{config_summary['ui']['port']}")
     
-    # Initialize and launch the Gradio interface
+    # Initialize the orchestrator
     try:
-        from src.ui import launch_interface
+        from src.orchestrator import TranscriptionOrchestrator
+        from src.ui import create_interface
+        
+        logger.info("Initializing transcription orchestrator...")
+        orchestrator = TranscriptionOrchestrator()
+        
+        logger.info("Creating Gradio interface...")
+        interface = create_interface(orchestrator=orchestrator)
+        
+        # Connect orchestrator to UI callbacks
+        def on_subtitle_update(result):
+            """Handle new subtitle from orchestrator"""
+            # This will be handled by the UI's live update mechanism
+            pass
+            
+        def on_status_update(status, data):
+            """Handle status updates from orchestrator"""
+            logger.info(f"Status update: {status} - {data}")
+            
+        def on_error(error):
+            """Handle errors from orchestrator"""
+            logger.error(f"Orchestrator error: {error}")
+        
+        orchestrator.set_callbacks(
+            subtitle_callback=on_subtitle_update,
+            status_callback=on_status_update,
+            error_callback=on_error
+        )
+        
         logger.info("Launching Gradio interface...")
         print("Starting web interface...")
         print(f"Open your browser and go to: http://{config.ui.host}:{config.ui.port}")
         
         # Launch the interface
-        launch_interface()
+        interface.launch()
         
     except Exception as e:
         logger.error(f"Failed to launch interface: {e}")
         print(f"Error launching interface: {e}")
         return
+    finally:
+        # Clean up performance profiler
+        profiler.cleanup()
 
 
 if __name__ == "__main__":
