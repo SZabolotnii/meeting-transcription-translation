@@ -4,7 +4,7 @@ Handles environment variables, API keys, and system settings.
 """
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple, Any
 from dataclasses import dataclass
 from dotenv import load_dotenv
 

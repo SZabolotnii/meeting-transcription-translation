@@ -13,8 +13,8 @@ from typing import Dict, Any
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from performance_profiler import profiler, get_performance_summary, get_optimization_recommendations
-from config import config, validate_environment
+from .performance_profiler import profiler, get_performance_summary, get_optimization_recommendations
+from ..config import config, validate_environment
 
 
 def analyze_system_performance() -> Dict[str, Any]:
@@ -95,7 +95,7 @@ def benchmark_whisper_models() -> Dict[str, Dict[str, float]]:
         print(f"  Testing {model_size} model...")
         
         try:
-            from transcription.whisper_transcriber import WhisperTranscriber
+            from ..transcription.whisper_transcriber import WhisperTranscriber
             import time
             
             # Initialize transcriber

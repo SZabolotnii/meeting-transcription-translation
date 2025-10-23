@@ -87,7 +87,7 @@ class PerformanceProfiler:
             'translation_latency': 2.0,    # seconds
             'total_latency': 5.0,          # seconds
             'cpu_percent': 80.0,           # percent
-            'memory_percent': 85.0,        # percent
+            'memory_percent': 90.0,        # percent - increased threshold
             'error_rate': 0.05,            # 5%
         }
         

@@ -262,12 +262,21 @@ class TranscriptionOrchestrator:
         try:
             # Initialize audio manager
             self.audio_manager = AudioManager()
+            self.logger.info("Audio manager initialized successfully")
             
             # Initialize translator if translation is needed
+            self.translator = None
             if (self.session_config and 
                 config.translation.api_key and 
                 self.session_config.target_language != "en"):  # Assuming source is English
-                self.translator = Translator()
+                try:
+                    self.translator = Translator()
+                    self.logger.info("Translator initialized successfully")
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize translator: {e}. Translation will be disabled.")
+                    self.translator = None
+            else:
+                self.logger.info("Translation disabled (no API key or same language)")
             
             # Whisper transcriber will be initialized in the transcription thread
             # to avoid blocking the main thread
@@ -329,7 +338,11 @@ class TranscriptionOrchestrator:
     def _cleanup_components(self):
         """Clean up all components"""
         if self.audio_manager:
-            self.audio_manager.cleanup()
+            # AudioManager doesn't have cleanup method, just stop capture
+            try:
+                self.audio_manager.stop_capture()
+            except:
+                pass
             self.audio_manager = None
             
         # Clear queues
@@ -358,45 +371,42 @@ class TranscriptionOrchestrator:
                 
             self.processing_status['audio_capture'] = 'active'
             
+            # Set up audio callback to receive audio segments
+            def audio_callback(audio_segment):
+                """Callback to handle incoming audio segments"""
+                try:
+                    # Update audio level for UI
+                    import numpy as np
+                    if len(audio_segment.data) > 0:
+                        self.performance_metrics['audio_level'] = float(np.abs(audio_segment.data).mean())
+                    
+                    # Put audio data in transcription queue
+                    if not self.audio_queue.full():
+                        self.audio_queue.put((audio_segment.data, audio_segment.timestamp), timeout=1.0)
+                        
+                        # Track audio capture performance
+                        profiler.add_metric('audio_capture_success', 1, 'count')
+                    else:
+                        self.logger.warning("Audio queue full, dropping audio data")
+                        profiler.add_metric('audio_queue_drops', 1, 'count')
+                        
+                except Exception as e:
+                    self.logger.error(f"Error in audio callback: {e}")
+                    self.performance_metrics['errors_count'] += 1
+                    profiler.add_metric('audio_capture_errors', 1, 'count')
+            
+            # Set the callback
+            self.audio_manager.set_audio_callback(audio_callback)
+            
             # Start audio capture
             self.audio_manager.start_capture(
                 source_type=self.session_config.audio_source_type,
                 device_id=self.session_config.audio_device_id
             )
             
-            while not self._shutdown_event.is_set():
-                try:
-                    # Get audio data from manager
-                    start_time = time.time()
-                    audio_data = self.audio_manager.get_audio_buffer()
-                    capture_time = time.time() - start_time
-                    
-                    if audio_data is not None:
-                        # Update audio level for UI
-                        import numpy as np
-                        if len(audio_data) > 0:
-                            self.performance_metrics['audio_level'] = float(np.abs(audio_data).mean())
-                        
-                        # Put audio data in transcription queue
-                        if not self.audio_queue.full():
-                            timestamp = time.time()
-                            self.audio_queue.put((audio_data, timestamp), timeout=1.0)
-                            
-                            # Track audio capture performance
-                            profiler.add_metric('audio_capture_latency', capture_time)
-                        else:
-                            self.logger.warning("Audio queue full, dropping audio data")
-                            profiler.add_metric('audio_queue_drops', 1, 'count')
-                    
-                    time.sleep(0.1)  # Small delay to prevent busy waiting
-                    
-                except Exception as e:
-                    self.logger.error(f"Error in audio capture: {e}")
-                    self.performance_metrics['errors_count'] += 1
-                    profiler.add_metric('audio_capture_errors', 1, 'count')
-                    if self.error_callback:
-                        self.error_callback(e)
-                    time.sleep(1.0)  # Wait before retrying
+            # Keep the worker thread alive while capturing
+            while not self._shutdown_event.is_set() and self.audio_manager.is_capturing():
+                time.sleep(0.5)  # Check every 500ms
                     
         except Exception as e:
             self.logger.error(f"Audio capture worker failed: {e}")
@@ -497,7 +507,7 @@ class TranscriptionOrchestrator:
                     
                     # Translate text with performance tracking
                     start_time = time.time()
-                    translated_text = self.translator.translate_text(
+                    translation_result = self.translator.translate_text(
                         original_text, 
                         self.session_config.target_language if self.session_config else "uk"
                     )
@@ -507,11 +517,13 @@ class TranscriptionOrchestrator:
                     profiler.add_metric('translation_latency', translation_time)
                     profiler.add_metric('translation_text_length', len(original_text), 'characters')
                     
-                    if translated_text:
+                    if translation_result and translation_result.translated_text:
                         profiler.add_metric('translation_success', 1, 'count')
-                        profiler.add_metric('translated_text_length', len(translated_text), 'characters')
+                        profiler.add_metric('translated_text_length', len(translation_result.translated_text), 'characters')
+                        translated_text = translation_result.translated_text
                     else:
                         profiler.add_metric('translation_failed', 1, 'count')
+                        translated_text = original_text  # Fallback to original text
                     
                     # Calculate total processing time
                     total_time = transcription_time + translation_time

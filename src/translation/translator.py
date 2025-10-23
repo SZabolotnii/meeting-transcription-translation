@@ -47,7 +47,7 @@ class TranslationCache:
     """Local cache for translation results"""
     
     def __init__(self, cache_dir: str = None):
-        self.cache_dir = Path(cache_dir or config.cache_path)
+        self.cache_dir = Path(cache_dir or config.storage.cache_path)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.cache_dir / "translation_cache.json"
         self.cache: Dict[str, Dict] = {}
@@ -158,18 +158,14 @@ class Translator:
         """Initialize Google Cloud Translation client"""
         try:
             if self.api_key:
-                # Use API key authentication
-                # Note: google-cloud-translate v2 doesn't support api_key parameter directly
-                # Set as environment variable instead
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = ''
-                os.environ['GOOGLE_API_KEY'] = self.api_key
-                self.client = translate.Client()
-            elif self.project_id:
-                # Use project-based authentication
-                self.client = translate.Client()
+                # For now, disable Google Cloud client and use direct API calls
+                # This avoids authentication issues
+                self.client = None
+                logging.info("Using direct API calls for Google Translate (API key provided)")
             else:
-                # Use default credentials
-                self.client = translate.Client()
+                logging.warning("No Google Translate API key provided. Translation will be disabled.")
+                self.client = None
+                return
                 
             # Test the connection
             self.client.get_languages()
@@ -181,7 +177,36 @@ class Translator:
     
     def is_available(self) -> bool:
         """Check if translation service is available"""
-        return self.client is not None
+        return self.client is not None or (self.api_key is not None)
+    
+    def _translate_with_api_key(self, text: str, target_lang: str, source_lang: str = None) -> Dict:
+        """Translate text using direct Google Translate API calls"""
+        import requests
+        
+        url = "https://translation.googleapis.com/language/translate/v2"
+        
+        params = {
+            'key': self.api_key,
+            'q': text,
+            'target': target_lang
+        }
+        
+        if source_lang and source_lang != "auto":
+            params['source'] = source_lang
+        
+        response = requests.post(url, data=params)
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        if 'data' in result and 'translations' in result['data']:
+            translation = result['data']['translations'][0]
+            return {
+                'translatedText': translation['translatedText'],
+                'detectedSourceLanguage': translation.get('detectedSourceLanguage', source_lang or 'auto')
+            }
+        else:
+            raise Exception(f"Unexpected API response: {result}")
     
     def get_supported_languages(self) -> List[Dict[str, str]]:
         """Get list of supported languages"""
@@ -249,9 +274,13 @@ class Translator:
         # Perform translation with retry logic
         for attempt in range(self.max_retries):
             try:
-                result = self.client.translate(
-                    text,
-                    target_language=target_lang,
+                # Use direct API call if client is not available
+                if self.client is None and self.api_key:
+                    result = self._translate_with_api_key(text, target_lang, source_language)
+                else:
+                    result = self.client.translate(
+                        text,
+                        target_language=target_lang,
                     source_language=source_language
                 )
                 

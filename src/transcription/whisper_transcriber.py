@@ -106,11 +106,14 @@ class WhisperTranscriber:
             
             # Optimize Whisper parameters based on model size
             whisper_options = {
-                "language": self.language,
                 "task": "transcribe",
                 "fp16": False,  # Use fp32 for better compatibility
                 "verbose": False
             }
+            
+            # Only set language if it's specified and valid
+            if self.language and self.language.strip():
+                whisper_options["language"] = self.language
             
             # Add performance optimizations for smaller models
             if self.model_size in ["tiny", "base"]:
