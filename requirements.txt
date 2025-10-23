@@ -1,0 +1,36 @@
+# Core dependencies for meeting transcription and translation system
+
+# AI/ML Libraries
+openai-whisper>=20230314
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Translation API
+google-cloud-translate>=3.11.0
+
+# Audio processing
+pyaudio>=0.2.11
+sounddevice>=0.4.6
+numpy>=1.21.0
+
+# Web UI
+gradio>=3.40.0
+
+# Async processing
+asyncio-mqtt>=0.11.0
+
+# Configuration and environment
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Logging and monitoring
+loguru>=0.7.0
+
+# Data handling
+dataclasses-json>=0.5.0
+
+# Development dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
