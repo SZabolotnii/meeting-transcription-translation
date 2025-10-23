@@ -22,7 +22,7 @@
 
 1. Клонуйте репозиторій:
 ```bash
-git clone <repository-url>
+git clone https://github.com/SZabolotnii/meeting-transcription-translation.git
 cd meeting-transcription-translation
 ```
 
